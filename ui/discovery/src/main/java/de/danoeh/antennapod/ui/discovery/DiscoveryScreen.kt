@@ -5,12 +5,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -21,6 +21,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImagePainter
@@ -45,6 +46,9 @@ fun DiscoveryScreen(
         topBar = {
             TopAppBar(
                 title = { Text(text = "Discover") },
+                navigationIcon = {
+                    IconButton(onClick = { /* back handled by host */ }) { Icon(Icons.Default.ArrowBack, contentDescription = "Back") }
+                },
                 actions = {
                     TextButton(onClick = { onHideDiscoveryChanged(!uiState.isHidden) }) { Text(if (uiState.isHidden) "Unhide" else "Hide") }
                     TextButton(onClick = { showCountryDialogState.value = true }) { Text("Country") }
@@ -82,12 +86,9 @@ fun DiscoveryScreen(
                         modifier = Modifier.align(Alignment.Center),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        // uiState.error is already non-null inside this branch
                         Text(text = uiState.error, color = MaterialTheme.colors.error)
                         Spacer(modifier = Modifier.height(16.dp))
-                        Button(onClick = onConfirmDiscovery) {
-                            Text("Retry")
-                        }
+                        Button(onClick = onConfirmDiscovery) { Text("Retry") }
                     }
                 }
                 uiState.toplist.isEmpty() -> {
@@ -98,13 +99,14 @@ fun DiscoveryScreen(
                     )
                 }
                 else -> {
-                    LazyVerticalGrid(
-                        columns = GridCells.Adaptive(180.dp),
-                        modifier = Modifier.fillMaxSize().padding(8.dp),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(8.dp)
-                    ) {
+                    // Match old design: vertical list with square thumbnails (56dp) and title/author on the right
+                    val thumbSize = 56.dp
+                    LazyColumn(modifier = Modifier.fillMaxSize()) {
                         items(uiState.toplist) { podcast ->
-                            PodcastGridItem(podcast, onClick = { onPodcastClick(podcast) })
+                            DiscoveryListItem(podcast = podcast, thumbSize = thumbSize, onClick = { onPodcastClick(podcast) })
+                        }
+                        item {
+                            Spacer(modifier = Modifier.height(8.dp))
                         }
                     }
                 }
@@ -140,7 +142,7 @@ fun CountrySelectionDialog(currentCode: String, onDismiss: () -> Unit, onSelect:
                 for (code in countryCodes) {
                     val name = Locale("", code).displayCountry
                     TextButton(onClick = { onSelect(code) }, modifier = Modifier.fillMaxWidth()) {
-                        Text(text = name, textAlign = TextAlign.Left)
+                        Text(text = name, textAlign = TextAlign.Start)
                     }
                 }
             }
@@ -152,26 +154,22 @@ fun CountrySelectionDialog(currentCode: String, onDismiss: () -> Unit, onSelect:
 }
 
 @Composable
-fun PodcastGridItem(podcast: PodcastSearchResult, onClick: () -> Unit) {
-    Card(
-        modifier = Modifier
-            .padding(8.dp)
-            .fillMaxWidth()
-            .clickable { onClick() },
-        elevation = 4.dp
-    ) {
-        Row(modifier = Modifier.padding(8.dp)) {
-            val imageUrl = podcast.imageUrl ?: ""
+private fun DiscoveryListItem(podcast: PodcastSearchResult, thumbSize: Dp, onClick: () -> Unit) {
+    Column(modifier = Modifier
+        .fillMaxWidth()
+        .clickable { onClick() }
+        .padding(horizontal = 16.dp, vertical = 12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             SubcomposeAsyncImage(
                 model = ImageRequest.Builder(LocalContext.current)
-                    .data(if (imageUrl.isNotEmpty()) imageUrl else null)
+                    .data(podcast.imageUrl)
                     .crossfade(true)
                     .build(),
                 contentDescription = podcast.title ?: "",
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .size(64.dp)
-                    .clip(RoundedCornerShape(8.dp))
+                    .size(thumbSize)
+                    .clip(RoundedCornerShape(6.dp))
             ) {
                 val state = painter.state
                 when (state) {
@@ -181,48 +179,37 @@ fun PodcastGridItem(podcast: PodcastSearchResult, onClick: () -> Unit) {
                                 .matchParentSize()
                                 .background(Color(0xFFE0E0E0)),
                             contentAlignment = Alignment.Center
-                        ) {
-                            CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                        }
+                        ) { CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp) }
                     }
                     is AsyncImagePainter.State.Error -> {
                         Image(
                             painter = painterResource(id = android.R.drawable.ic_menu_report_image),
                             contentDescription = "Podcast artwork not available for ${podcast.title ?: ""}",
                             contentScale = ContentScale.Crop,
-                            modifier = Modifier.matchParentSize().clip(RoundedCornerShape(8.dp))
+                            modifier = Modifier.matchParentSize().clip(RoundedCornerShape(6.dp))
                         )
                     }
-                    else -> {
-                        SubcomposeAsyncImageContent()
-                    }
+                    else -> SubcomposeAsyncImageContent()
                 }
             }
-            Spacer(modifier = Modifier.width(12.dp))
+
+            Spacer(modifier = Modifier.width(16.dp))
+
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = podcast.title ?: "",
                     style = MaterialTheme.typography.h6.copy(lineHeight = 20.sp),
                     maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.fillMaxWidth()
+                    overflow = TextOverflow.Ellipsis
                 )
-                // Prefer safe-handling: show author if present, otherwise show feedUrl if usable
-                if (!podcast.author.isNullOrEmpty()) {
-                    Text(
-                        text = podcast.author.orEmpty(),
-                        style = MaterialTheme.typography.body2,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                } else {
-                    podcast.feedUrl?.let { url ->
-                        if (url.isNotEmpty() && !url.contains("itunes.apple.com")) {
-                            Text(text = url, style = MaterialTheme.typography.body2, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth())
-                        }
-                    }
-                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = podcast.author.orEmpty(),
+                    style = MaterialTheme.typography.body2,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colors.onSurface.copy(alpha = 0.7f)
+                )
             }
         }
     }
